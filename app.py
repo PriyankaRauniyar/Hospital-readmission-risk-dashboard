@@ -184,9 +184,11 @@ if page == "Overview":
         st.markdown("#### How class decisions compare with outcomes")
         st.write("Rows show actual outcomes and columns show predictions. The diagonal shows correct predictions; the remaining cells show misclassifications.")
         show_confusion(np.asarray(CONFUSION))
-    st.markdown('<div class="atlas-note"><strong>Care coordination interpretation:</strong> '
-        'Of 2,216 encounters followed by readmission within 30 days, the frozen model identified 879. '
-        'Among encounters flagged for early readmission, 21.81% had that outcome.</div>',
+    st.markdown('<div class="atlas-note"><strong>Early readmission detection:</strong> '
+        'In the 19,802-encounter test set, 2,216 encounters were followed by readmission within 30 days. '
+        'The model correctly predicted “Within 30 days” for <strong>879 (39.7%)</strong> of them and missed <strong>1,337</strong>. '
+        'It predicted “Within 30 days” for <strong>4,031</strong> encounters overall; <strong>879 (21.8%)</strong> actually had that outcome. '
+        'This shows the trade-off a care team would face: reviewing all 4,031 flags would still miss some early readmissions.</div>',
         unsafe_allow_html=True)
 
     st.subheader("Early-readmission identification and review burden")
