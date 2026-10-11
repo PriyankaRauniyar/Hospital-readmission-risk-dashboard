@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+.venv/
+.streamlit/secrets.toml
+.DS_Store
+# De-identified research data and serialized models are added only after review.
+data/*.csv
+data/*.csv.gz
+# Reviewed allowlisted model outputs; no source columns or outcome labels.
+!data/public_predictions.csv.gz
+!data/powerbi_patient_predictions.csv
+uploads/
+uploaded_files/
+tmp/
+temp/
+outputs/
+*.tmp
+*.log
+final_model_artifacts/*.cbm
+final_model_artifacts/*.json
+final_model_artifacts/*.joblib
+!final_model_artifacts/final_catboost_model.cbm
+!final_model_artifacts/final_xgboost_model.json
+!final_model_artifacts/final_xgb_preprocessor.joblib
+!final_model_artifacts/probability_calibrator.joblib
+!final_model_artifacts/model_configuration.json
+.env
+.env.*
+.aws/
+.codex/
+.agents/
