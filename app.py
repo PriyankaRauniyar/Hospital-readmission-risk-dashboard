@@ -440,5 +440,4 @@ elif page == "Methods":
     st.caption("Source of frozen results: Hospital Readmission_Risk_and_Care_Coordination final reporting notebook.")
 
 st.divider()
-st.markdown("Dataset: [UCI Diabetes 130-US Hospitals for Years 1999–2008](https://archive.ics.uci.edu/dataset/296) · Clore, Cios, DeShazo & Strack (2014) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) · Model-derived predictions.")
 st.caption("Created by Priyanka Rauniyar · Hospital Readmission Risk Dashboard · 60% CatBoost + 40% XGBoost")
