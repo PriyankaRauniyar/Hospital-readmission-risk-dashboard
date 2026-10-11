@@ -28,18 +28,28 @@ st.set_page_config(page_title="Hospital Readmission Risk Dashboard", page_icon="
 # to our own elements; charts have an explicit light surface in either theme.
 st.markdown("""
 <style>
-  .block-container {max-width: 1480px; padding-top: 2rem;}
-  .atlas-hero {padding: 1.8rem 2rem; border-radius: 18px;
-    background: #123D49; margin-bottom: 1.5rem; border: 1px solid #527B84;}
-  .atlas-hero h1 {color: #FFFFFF; margin: .25rem 0; font-size: clamp(1.8rem, 4vw, 2.8rem);}
-  .atlas-hero p {color: #E4F1F3; margin: .5rem 0 0;}
+  [data-testid="stMainBlockContainer"] {max-width: 1480px; padding-top: 5.5rem;}
+  .atlas-hero {box-sizing: border-box; padding: clamp(1.5rem, 3vw, 2.5rem);
+    border-radius: 24px; overflow: hidden;
+    background: linear-gradient(115deg, #123D49, #174D59);
+    margin: .5rem 0 1.5rem; border: 1px solid #527B84;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .12);}
+  .atlas-hero h1 {color: #FFFFFF; margin: .85rem 0 1rem; padding: 0;
+    font-size: clamp(1.8rem, 3.2vw, 2.7rem); line-height: 1.18;
+    font-weight: 750; letter-spacing: -.025em; overflow-wrap: break-word;}
+  .atlas-hero p {color: #E4F1F3; margin: 0; max-width: 65ch;
+    font-size: 1rem; line-height: 1.6;}
   .atlas-hero .atlas-eyebrow {color: #BCE4DF; font-size: .8rem; font-weight: 700;
     letter-spacing: .12em; text-transform: uppercase;}
   .atlas-note {background: #EDF5F5; color: #183D48; border-left: 4px solid #986014;
     padding: 1rem 1.2rem; border-radius: 0 12px 12px 0; margin: 1rem 0;}
   .atlas-note strong {color: #183D48;}
   [data-testid="stMetric"] {border: 1px solid #789297; border-radius: 12px; padding: 1rem;}
-  @media (max-width: 640px) {.atlas-hero {padding: 1.2rem;} .block-container {padding: 1rem;}}
+  @media (max-width: 640px) {
+    [data-testid="stMainBlockContainer"] {padding: 5rem 1rem 1rem;}
+    .atlas-hero {padding: 1.4rem; border-radius: 18px;}
+    .atlas-hero .atlas-eyebrow {font-size: .7rem; letter-spacing: .08em;}
+  }
 </style>
 """, unsafe_allow_html=True)
 
