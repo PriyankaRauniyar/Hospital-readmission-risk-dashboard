@@ -16,6 +16,8 @@ from predictor import MODEL_FILES, load_bundle, predict
 from public_predictions import BATCH_SIZE, load_public_predictions
 from prediction_summary import describe_predictions
 from uci_examples import fetch_uci_examples, scoring_records
+from display_formatting import percentage_table
+from public_predictions import UNCALIBRATED, CALIBRATED
 
 
 ROOT = Path(__file__).resolve().parent
@@ -84,14 +86,24 @@ def show_confusion(matrix: np.ndarray, title: str = "Final test: actual vs. pred
 
 
 def percentages(frame: pd.DataFrame, value_columns: list[str]):
-    st.dataframe(frame, hide_index=True, use_container_width=True,
-        column_config={name: st.column_config.NumberColumn(name, format="%.2f%%") for name in value_columns})
+    st.dataframe(percentage_table(frame, value_columns), hide_index=True, use_container_width=True)
+
+
+def probability_columns():
+    return {name: st.column_config.NumberColumn(name, format="%.4f")
+            for name in UNCALIBRATED + CALIBRATED}
 
 
 def explain_prediction_table(data: pd.DataFrame):
-    st.markdown("#### What this batch shows")
-    for paragraph in describe_predictions(data):
-        st.write(paragraph)
+    st.markdown("**These are predicted outcomes, not observed readmissions.**")
+    st.markdown("#### Selected batch: predicted outcomes")
+    paragraphs = describe_predictions(data)
+    if paragraphs:
+        st.write(paragraphs[0])
+        with st.expander("Technical probability details"):
+            for paragraph in paragraphs[1:4]:
+                st.write(paragraph)
+        st.caption(paragraphs[-1])
 
 
 def prediction_table_guide():
@@ -188,7 +200,7 @@ if page == "Overview":
         'In the 19,802-encounter test set, 2,216 encounters were followed by readmission within 30 days. '
         'The model correctly predicted “Within 30 days” for <strong>879 (39.7%)</strong> of them and missed <strong>1,337</strong>. '
         'It predicted “Within 30 days” for <strong>4,031</strong> encounters overall; <strong>879 (21.8%)</strong> actually had that outcome. '
-        'This shows the trade-off a care team would face: reviewing all 4,031 flags would still miss some early readmissions.</div>',
+        'The other <strong>3,152 flags</strong> had a different observed outcome. In a hypothetical review workflow, those flags would add workload while 1,337 early readmissions remained unflagged. These retrospective results do not establish clinical deployment or benefit.</div>',
         unsafe_allow_html=True)
 
     st.subheader("Early-readmission identification and review burden")
@@ -197,12 +209,11 @@ if page == "Overview":
     cols[0].metric("Early readmissions identified", f"{counts['identified']:,}")
     cols[1].metric("Early readmissions missed", f"{counts['missed']:,}")
     cols[2].metric("Other outcomes flagged as early", f"{counts['false_positive']:,}")
-    st.write("Of the 4,031 encounters assigned to the within-30-day class, 879 actually had an early readmission (21.81% precision). The other 3,152 represent review burden. The model missed 1,337 early readmissions. These counts show the balance between early-readmission detection and false-positive flags in the final test cohort.")
 
 elif page == "Explore predictions":
     st.subheader("Predictions on historical research encounters")
     st.write("Precomputed outputs from the frozen 60% CatBoost / 40% XGBoost ensemble. These rows include development data and cannot be used to calculate a new test accuracy. The separate overview reports the unchanged 19,802-encounter untouched-test results.")
-    st.caption("Class decisions follow the highest uncalibrated probability. Calibrated probabilities are exploratory risk estimates.")
+    st.write("The displayed class follows the largest **uncalibrated** probability. Calibrated estimates are exploratory risks and can rank the outcomes differently; they do not replace the final class decision.")
     st.markdown("Source: [UCI Diabetes 130-US Hospitals for Years 1999–2008](https://archive.ics.uci.edu/dataset/296) · Clore, Cios, DeShazo & Strack (2014) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) · Model-derived predictions.")
     public_path = ROOT / "data" / "public_predictions.csv.gz"
     if not public_path.is_file():
@@ -222,7 +233,7 @@ elif page == "Explore predictions":
             st.caption(f"{len(public):,} historical encounters · Batch {selected_batch} of {batch_count} · display rows {start + 1:,}–{start + len(selected):,} · {len(selected):,} rows")
             prediction_table_guide()
             st.dataframe(selected, hide_index=True, use_container_width=True,
-                         column_config={"Display_row": st.column_config.NumberColumn("Display row", format="%d")})
+                         column_config={**probability_columns(), "Display_row": st.column_config.NumberColumn("Display row", format="%d")})
             explain_prediction_table(selected)
             st.download_button("Download selected batch", selected.to_csv(index=False).encode(),
                                file_name=f"historical_predictions_batch_{selected_batch}.csv", mime="text/csv")
@@ -232,7 +243,8 @@ elif page == "Explore predictions":
 elif page == "Model performance":
     st.subheader("Model comparison · validation cohort")
     st.write("The validation cohort provided a common basis for model selection. Final test performance appears in the overview.")
-    st.caption("Validation results for the five candidate models.")
+    st.write("On validation data, the 60/40 ensemble has 46.42% macro F1 and identifies 39.02% of actual within-30-day readmissions. Two-stage XGBoost has higher overall accuracy (56.29%), but identifies 19.00% of early readmissions. Higher overall accuracy can therefore come with more missed early readmissions. These figures describe a trade-off; they do not establish why the final model was selected.")
+    st.caption("Validation results for the five candidate models. Macro F1 summarizes performance across all three classes with equal weight.")
     comparison = pd.DataFrame(VALIDATION_MODELS)
     metric = st.selectbox("Compare models by", ["Macro F1", "Within 30 recall", "Accuracy", "Log loss"])
     chart = px.bar(comparison.sort_values(metric), x=metric, y="Model", orientation="h",
@@ -243,10 +255,7 @@ elif page == "Model performance":
         chart.update_xaxes(tickformat=".0%")
     st.caption("Lower log loss is better; higher accuracy, macro F1, and early recall are better.")
     st.plotly_chart(figure_base(chart, 390), use_container_width=True, theme=None)
-    percentages(comparison.assign(**{"Accuracy":comparison["Accuracy"]*100,
-        "Macro F1":comparison["Macro F1"]*100,
-        "Within 30 recall":comparison["Within 30 recall"]*100}),
-        ["Accuracy", "Macro F1", "Within 30 recall"])
+    percentages(comparison, ["Accuracy", "Macro F1", "Within 30 recall"])
     st.subheader("CatBoost component: top features")
     st.caption("Relative feature importance within CatBoost, not a causal explanation of readmission.")
     feat = pd.DataFrame(FEATURE_IMPORTANCE, columns=["Feature", "Importance"])
@@ -284,7 +293,9 @@ elif page == "Patient cohorts":
             st.caption("These values recalculate for the filtered test encounters; small groups may have unstable estimates.")
             show_confusion(confusion(data).to_numpy(), "Filtered encounters: actual vs. predicted outcomes")
             if "Risk_band" in data and data["Risk_band"].notna().any():
-                st.subheader("Actual outcome mix within each risk band")
+                st.subheader("Filtered test: observed outcomes within risk bands")
+                st.write("Bands use the **calibrated within-30-day probability**: **Low ≤ 10%**, **Moderate > 10% to ≤ 16%**, **Elevated > 16% to ≤ 25%**, and **High > 25%**. These are descriptive export bands, not validated clinical action thresholds.")
+                st.caption("Each stacked bar totals 100% and shows the observed outcome shares among encounters within that band. Counts below reflect the current filters.")
                 cross = pd.crosstab(data["Risk_band"], data["Actual_outcome"])
                 order = [x for x in ["Low", "Moderate", "Elevated", "High"] if x in cross.index]
                 cross = cross.reindex(order + [x for x in cross.index if x not in order])
@@ -295,8 +306,9 @@ elif page == "Patient cohorts":
                         fig.add_bar(x=share.index.astype(str), y=share[name] * 100,
                             name=name, marker_color=COLOR[name], customdata=cross[name],
                             hovertemplate="%{x}<br>"+name+": %{y:.1f}% (%{customdata:,} encounters)<extra></extra>")
-                fig.update_layout(title="Filtered encounters: observed outcomes by risk band", barmode="stack", yaxis_title="Share of encounters (%)", xaxis_title="Predicted 30-day risk band")
-                st.plotly_chart(figure_base(fig, 410), use_container_width=True, theme=None)
+                fig.update_layout(title="Filtered encounters: observed outcomes by risk band", barmode="stack", yaxis_title="Share of encounters (%)", xaxis_title="Calibrated within-30-day risk band")
+                st.plotly_chart(figure_base(fig, 480), use_container_width=True, theme=None)
+                st.dataframe(cross.sum(axis=1).rename("Filtered encounters").reset_index(), hide_index=True, use_container_width=True)
             elif "Risk_30" in data:
                 st.caption("Calibrated 30-day probabilities are present; the report's risk-band labels were not included in this export.")
             st.subheader("Filtered subgroup performance")
@@ -304,7 +316,7 @@ elif page == "Patient cohorts":
             if available:
                 selected_group = st.selectbox("Group by", available)
                 table = subgroup_table(data, selected_group)
-                st.dataframe(table, hide_index=True, use_container_width=True, column_config={name: st.column_config.NumberColumn(name, format="percent") for name in ("Within 30 recall", "Accuracy", "Macro F1")})
+                percentages(table, ["Within 30 recall", "Accuracy", "Macro F1"])
                 st.caption("Subgroup sizes provide context for differences in early-readmission recall.")
 
 elif page == "Fairness & calibration":
@@ -319,7 +331,9 @@ elif page == "Fairness & calibration":
     fig.update_traces(hovertemplate="%{x}<br>Share: %{y:.2%}<extra>%{fullData.name}</extra>")
     fig.update_yaxes(tickformat=".0%", title="Share")
     st.plotly_chart(figure_base(fig, 410), use_container_width=True, theme=None)
-    st.dataframe(calibration, hide_index=True, use_container_width=True)
+    st.dataframe(calibration, hide_index=True, use_container_width=True, column_config={name: st.column_config.NumberColumn(name, format="%.4f") for name in calibration.columns if name != "Class"})
+    st.write("**Brier score** measures squared differences between estimated probabilities and observed outcomes; lower is better. The multiclass score adds these errors across the three outcomes. **Expected calibration error (ECE)** measures the weighted gap between average probability and observed outcome rate across groups of similar probabilities; lower is better. This project uses 10 approximately equal-count groups for each class.")
+    st.write("Lower before/after scores indicate better probability agreement on this held-out historical test cohort. Mean risks matching prevalence alone do not establish accurate individual risks, clinical usefulness, or performance at another hospital.")
     a, b = st.columns(2)
     a.metric("Multiclass Brier · before", "0.5910")
     b.metric("Multiclass Brier · after", "0.5245")
@@ -335,11 +349,12 @@ elif page == "Fairness & calibration":
         group = st.selectbox("Subgroup variable", subgroup_variables)
         table = subgroup_table(encounters, group)
         fig = px.bar(table, x="Group", y="Within 30 recall", color="Encounters", color_continuous_scale="Teal")
-        fig.update_layout(title=f"Encounter export: early-readmission recall by {group}", coloraxis_colorbar_title="Encounters")
+        fig.update_layout(title=f"Final test: descriptive early-readmission recall by {group}", coloraxis_colorbar_title="Encounters")
         fig.update_traces(hovertemplate="Group: %{x}<br>Early recall: %{y:.2%}<extra></extra>")
         fig.update_yaxes(tickformat=".0%", range=[0,1])
         st.plotly_chart(figure_base(fig), use_container_width=True, theme=None)
-        st.caption("Recall estimates are less stable in groups with few early readmissions. These comparisons describe the cohort.")
+        st.caption("These subgroup comparisons are descriptive. Recall is the share of actual early readmissions identified within each group. Small groups, especially those with few early readmissions, have less stable estimates. The charts do not establish clinical fairness.")
+        percentages(table, ["Within 30 recall", "Accuracy", "Macro F1"])
 
 elif page == "Batch scoring":
     st.subheader("Batch encounter scoring")
@@ -357,7 +372,7 @@ elif page == "Batch scoring":
         if source_choice == "UCI example data":
             load_column, note_column = st.columns([1, 3])
             load_examples = load_column.button("Load UCI example data", use_container_width=True)
-            note_column.markdown("**Historical research data:** These encounters include records used during model development. Their predictions demonstrate the scoring workflow and are not a new independent accuracy test.")
+            note_column.markdown("**Historical research data:** This option loads encounters from the original UCI dataset, including records used during model development. Their predictions demonstrate scoring. They are not new hospital data or an independent accuracy test.")
             st.markdown("Source: [UCI Diabetes 130-US Hospitals for Years 1999–2008](https://archive.ics.uci.edu/dataset/296) · Clore, Cios, DeShazo & Strack (2014) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).")
 
             @st.cache_data(ttl=86400, max_entries=1, show_spinner=False)
@@ -416,7 +431,7 @@ elif page == "Batch scoring":
                     results = predict(scoring_records(raw), get_bundle())
                 st.success(f"Scored {len(results):,} encounters")
                 prediction_table_guide()
-                st.dataframe(results, hide_index=True, use_container_width=True)
+                st.dataframe(results, hide_index=True, use_container_width=True, column_config=probability_columns())
                 explain_prediction_table(results)
                 st.download_button("Download predictions and risks", results.to_csv(index=False).encode(),
                     file_name=f"readmission_research_predictions_batch_{batch}.csv", mime="text/csv")
@@ -427,17 +442,20 @@ elif page == "Batch scoring":
 elif page == "Methods":
     st.subheader("How this model was built")
     st.markdown("""
-**Population.** Diabetes encounters in the UCI dataset. Death and hospice discharge codes were excluded from the prediction cohort. Patient-grouped development, validation, and test splits prevent a patient's encounters from crossing partitions.
+**Study population.** Historical inpatient encounters involving people with diabetes in the UCI 130-US-hospital dataset. The prediction cohort excludes discharge codes for death and hospice (11, 13, 14, 19, 20, 21).
 
-**Target.** Three classes: no readmission, within 30 days, and after 30 days.
+**Patient-grouped split.** Encounters from the same patient stay together in one partition. The notebook first separates development and held-out test patients, then separates training and validation patients within development. This reduces overlap between patients used to build the model and those used to evaluate it.
 
-**Features.** Hospital utilization, diagnoses, medications, care intensity, and discharge information available by discharge. The patient and encounter identifiers are excluded from model inputs.
+**Inputs.** Information recorded by discharge, including prior hospital use, diagnoses, medications, care intensity, and discharge circumstances, plus engineered summaries of these fields. Patient and encounter identifiers and the known readmission outcome are excluded from model inputs.
 
-**Frozen model.** 60% CatBoost + 40% XGBoost soft voting. The uncalibrated ensemble's largest class probability selects the class. A separate multinomial calibration step provides exploratory class risk estimates.
+**Class decisions.** CatBoost contributes 60% and XGBoost 40% of the combined probabilities. The outcome with the largest uncalibrated probability becomes the prediction: no readmission, within 30 days, or after 30 days.
 
-**Evaluation.** Untouched test cohort: 19,802 encounters; accuracy 52.43%; macro F1 46.15%; within-30-day recall 39.67%. Validation results in the comparison tab are separate from test results.
+**Calibration.** A separate multinomial logistic calibrator was fitted to validation outcomes and log-transformed ensemble probabilities, without fitting on test outcomes. It adjusts exploratory probability estimates; it does not replace the final class decision.
 
-**Limitations.** Retrospective dataset, limited longitudinal information, class imbalance, and modest early-readmission precision. The results come from retrospective research, with no prospective or external clinical validation.
+**Held-out evaluation.** The frozen results cover 19,802 test encounters: 52.43% accuracy, 46.15% macro F1, and 39.67% within-30-day recall. Accuracy is the share of correct class predictions; macro F1 balances precision and recall equally across the three classes; early recall is the share of actual early readmissions identified. Validation comparisons are shown separately.
+
+**Scope and limitations.** Historical data, limited follow-up context, class imbalance, and modest early-readmission precision limit interpretation. The results do not establish benefit from an intervention, clinical fairness, or performance at another hospital. No prospective or external clinical validation is recorded. UCI example scoring and public prediction batches include development encounters and are demonstrations, not new independent tests.
+
 """)
     st.caption("Source of frozen results: Hospital Readmission_Risk_and_Care_Coordination final reporting notebook.")
 

@@ -1,0 +1,6 @@
+Model,Accuracy,Macro F1,Log loss,F1: No,F1: Within 30,F1: After 30,Recall: Within 30
+CatBoost–XGBoost ensemble,0.5258,0.4642,0.9872,0.6419,0.2831,0.4676,0.3902
+XGBoost,0.5217,0.4596,0.9818,0.6351,0.2751,0.4684,0.3731
+CatBoost,0.518,0.4592,0.9977,0.6364,0.2821,0.4592,0.4047
+Embedding neural network,0.4926,0.4406,1.0071,0.62,0.28,0.43,0.44
+Two-stage XGBoost,0.5629,0.4147,0.9186,0.71,0.22,0.31,0.19

@@ -145,3 +145,17 @@ five saved model files, and the existing model runtime dependencies. No extra Py
 package or secret is needed. Python 3.12 and `libgomp1` remain the recommended cloud
 runtime. These historical examples include development records and demonstrate
 scoring; no accuracy is computed from them. Held-out test KPIs stay unchanged.
+
+## Interpretation and display formatting
+
+`docs/validation_results.csv` preserves the saved validation comparison used to
+check the dashboard wording. `docs/interpretation_sources.md` records verified
+notebook definitions for patient grouping, calibration, ECE, and risk bands.
+Risk bands use calibrated within-30-day probabilities: Low ≤10%, Moderate
+>10%–≤16%, Elevated >16%–≤25%, High >25%. Chart bars show observed outcome shares
+within each band, with filtered encounter counts available below the chart.
+
+Visible metric tables show percentages to two decimal places and prediction
+probabilities to four decimal places. Display formatting does not change source
+numbers or CSV download precision. Public batch summaries lead with predicted
+class counts; detailed probability statistics are in Technical probability details.
