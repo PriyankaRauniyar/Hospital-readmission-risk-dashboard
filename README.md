@@ -38,9 +38,9 @@ not distributed with this repository. Linux deployments need `libgomp1`;
 - **Patient cohorts:** age, gender, and race filters on the reduced final-test export.
   Filtered metrics never change the frozen overview KPIs.
 - **Fairness & calibration:** aggregate calibration results and test-cohort subgroup recall.
-- **Batch scoring:** the only page requiring an uploaded encounter CSV. It supports
-  files with the training input columns, excludes the same death/hospice codes,
-  and scores selected batches of up to 2,000 rows using the saved artifacts.
+- **Batch scoring:** either Load UCI example data or CSV upload. Both use the same
+  eligibility exclusions and frozen models, with selected batches of up to 2,000 rows.
+  Visitors can explore historical encounters without downloading or uploading a file.
 - **Methods:** study population, development, evaluation, and limitations.
 
 Native controls and tables follow Streamlit's light/dark theme. Charts use explicit
@@ -96,8 +96,8 @@ The test files contain focused functions and can be run without extra test depen
 
 ```bash
 python - <<'PY'
-import test_core, test_public_predictions, test_prediction_summary
-for module in (test_core, test_public_predictions, test_prediction_summary):
+import test_core, test_public_predictions, test_prediction_summary, test_uci_examples
+for module in (test_core, test_public_predictions, test_prediction_summary, test_uci_examples):
     for name in dir(module):
         if name.startswith('test_'):
             getattr(module, name)()
@@ -113,7 +113,7 @@ Select this repository and `app.py` as the entry point, with Python 3.12.
 `requirements.txt` installs Python dependencies and `packages.txt` installs OpenMP
 for Linux scoring. No secrets or raw dataset are required. After deployment, check
 the four overview KPIs, Batch 50 in Explore predictions, the cohort filters, and
-an upload on Batch scoring. Missing optional exports or artifacts produce availability
+both the UCI example button and an upload on Batch scoring. Missing optional exports or artifacts produce availability
 messages rather than preventing the fixed reporting pages from loading.
 
 ## Dataset attribution and research limitation
@@ -127,3 +127,21 @@ The published prediction exports are reduced/derived outputs from that source.
 This is a retrospective research dashboard, not a validated clinical decision tool.
 The data has limited longitudinal context and class imbalance; early-readmission
 precision is modest. No prospective or external clinical validation was performed.
+
+
+## UCI example scoring
+
+Batch scoring offers **Load UCI example data** beside an explicit historical-research
+note. `uci_examples.py` fetches the official UCI dataset 296 archive over HTTPS with
+a 30-second timeout and reads the CSV in memory. It neither extracts the archive to
+disk nor writes a raw/public dataset output. Identifiers and the known `readmitted`
+outcome are removed before caching and scoring. The sanitized encounter frame is
+cached in memory for 24 hours with one cache entry; an unavailable source produces
+a retry/CSV-upload message. Uploads receive the same identifier/outcome removal.
+Only model decisions and probabilities appear in result tables and downloads.
+
+The deployment needs outbound HTTPS access to `archive.ics.uci.edu`, the existing
+five saved model files, and the existing model runtime dependencies. No extra Python
+package or secret is needed. Python 3.12 and `libgomp1` remain the recommended cloud
+runtime. These historical examples include development records and demonstrate
+scoring; no accuracy is computed from them. Held-out test KPIs stay unchanged.

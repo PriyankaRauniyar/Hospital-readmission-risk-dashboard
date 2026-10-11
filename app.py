@@ -15,6 +15,7 @@ from benchmark import CALIBRATION, CLASS_NAMES, CONFUSION, FEATURE_IMPORTANCE, T
 from predictor import MODEL_FILES, load_bundle, predict
 from public_predictions import BATCH_SIZE, load_public_predictions
 from prediction_summary import describe_predictions
+from uci_examples import fetch_uci_examples, scoring_records
 
 
 ROOT = Path(__file__).resolve().parent
@@ -113,7 +114,7 @@ SECTION_DETAILS = {
     "Model performance": "Validation comparisons and the features behind the model.",
     "Patient cohorts": "Encounter results by age, gender, and race.",
     "Fairness & calibration": "Subgroup recall and exploratory probability estimates.",
-    "Batch scoring": "Upload-based scoring for local research use.",
+    "Batch scoring": "Score historical UCI examples or uploaded encounters.",
     "Methods": "Study population, model development, and evaluation.",
 }
 
@@ -339,8 +340,8 @@ elif page == "Fairness & calibration":
         st.caption("Recall estimates are less stable in groups with few early readmissions. These comparisons describe the cohort.")
 
 elif page == "Batch scoring":
-    st.subheader("Local research · upload-based scoring")
-    st.caption("This workspace scores uploaded encounter records. Explore predictions provides the precomputed public results.")
+    st.subheader("Batch encounter scoring")
+    st.caption("Score historical UCI examples or an encounter CSV with the frozen ensemble. Explore predictions provides precomputed public results.")
     artifact_dir = ROOT / "final_model_artifacts"
     missing = [name for name in MODEL_FILES if not (artifact_dir / name).exists()]
     if missing:
@@ -349,15 +350,46 @@ elif page == "Batch scoring":
     else:
         st.caption("The saved ensemble scores encounter records with the same features used during training.")
         st.info("Encounter CSVs, including diabetic_data.csv, are processed in batches of up to 2,000 rows. The modeling cohort excludes death/hospice discharge codes 11, 13, 14, 19, 20, and 21. IDS_mapping.csv contains code descriptions rather than encounter records.")
-        uploaded = st.file_uploader("Upload an encounter CSV to see predictions and risk estimates", type=["csv"])
-        if uploaded is not None:
+        source_choice = st.radio("Encounter source", ["UCI example data", "CSV upload"], horizontal=True)
+        raw = None
+        if source_choice == "UCI example data":
+            load_column, note_column = st.columns([1, 3])
+            load_examples = load_column.button("Load UCI example data", use_container_width=True)
+            note_column.markdown("**Historical research data:** These encounters include records used during model development. Their predictions demonstrate the scoring workflow and are not a new independent accuracy test.")
+            st.markdown("Source: [UCI Diabetes 130-US Hospitals for Years 1999–2008](https://archive.ics.uci.edu/dataset/296) · Clore, Cios, DeShazo & Strack (2014) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).")
+
+            @st.cache_data(ttl=86400, max_entries=1, show_spinner=False)
+            def get_uci_examples():
+                return fetch_uci_examples()
+
+            if load_examples:
+                try:
+                    with st.spinner("Loading historical UCI encounters..."):
+                        get_uci_examples()
+                    st.session_state["uci_examples_loaded"] = True
+                except ValueError as exc:
+                    st.session_state["uci_examples_loaded"] = False
+                    st.error(str(exc))
+            if st.session_state.get("uci_examples_loaded"):
+                try:
+                    raw = get_uci_examples()
+                except ValueError as exc:
+                    st.session_state["uci_examples_loaded"] = False
+                    st.error(str(exc))
+        else:
+            uploaded = st.file_uploader("Upload an encounter CSV to see predictions and risk estimates", type=["csv"])
+            if uploaded is not None:
+                try:
+                    if Path(uploaded.name).name.lower() == "ids_mapping.csv":
+                        raise ValueError("This file contains ID code descriptions rather than encounter records. Batch scoring needs encounter data, such as diabetic_data.csv.")
+                    raw = scoring_records(pd.read_csv(uploaded, low_memory=False))
+                except (ValueError, OSError, pd.errors.ParserError) as exc:
+                    st.error(str(exc))
+        if raw is not None:
             try:
-                if Path(uploaded.name).name.lower() == "ids_mapping.csv":
-                    raise ValueError("This file contains ID code descriptions rather than encounter records. Batch scoring needs encounter data, such as diabetic_data.csv.")
-                raw = pd.read_csv(uploaded, low_memory=False)
                 if "description" in raw.columns and not {"race", "gender", "age"}.intersection(raw.columns):
                     raise ValueError("This file appears to be a code dictionary. Scoring requires encounter rows with patient features such as race, gender, and age.")
-                st.caption(f"Uploaded {len(raw):,} encounter rows.")
+                st.caption(f"{source_choice} · {len(raw):,} encounter rows loaded.")
                 if "discharge_disposition_id" in raw:
                     discharge = pd.to_numeric(raw["discharge_disposition_id"], errors="coerce")
                     excluded = discharge.isin([11, 13, 14, 19, 20, 21])
@@ -379,7 +411,7 @@ elif page == "Batch scoring":
                 def get_bundle():
                     return load_bundle(artifact_dir)
                 with st.spinner("Scoring encounters with the frozen ensemble..."):
-                    results = predict(raw, get_bundle())
+                    results = predict(scoring_records(raw), get_bundle())
                 st.success(f"Scored {len(results):,} encounters")
                 prediction_table_guide()
                 st.dataframe(results, hide_index=True, use_container_width=True)
